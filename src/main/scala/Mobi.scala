@@ -1,7 +1,13 @@
 
+import breeze.math.Complex
+import breeze.numerics.abs
+import breeze.plot.{Figure, Plot}
+
 import scala.math.pow
 
 object Mobi {
+  import MathHelpers._
+  import NumericalIntegration._
 
   implicit class PowerDouble(val i: Double) extends AnyVal {
     def ^ (exp: Int):Double = pow(i, exp)
@@ -13,7 +19,6 @@ object Mobi {
   case class Ey(m: Int, n: Int) extends Mod
 
   def main(args: Array[String]): Unit = {
-
     val min_κ = 0
     val max_κ = 225650
 
@@ -27,6 +32,35 @@ object Mobi {
     val L = 0.05    // m
 
     val k_0 = 2 * π / λ
+
+    val α_L_arr = Seq(0.001 / L, 0.01 / L, 0.1 / L, 1.0 / L)
+    val pout_przez_ps_arr = Seq(0.001, 0.01, 0.1, 1.0)
+
+    val input = Seq(
+      (   0.01,   .744380E+03, .419876E+03),
+      (   0.03,   .620847E+03, .412581E+03),
+      (   0.05,   .562817E+03, .408455E+03),
+      (   0.07,   .524365E+03, .405420E+03),
+      (   0.1,    .483398E+03, .401880E+03),
+      (   0.3,    .355847E+03, .388266E+03),
+      (   0.5,    .295886E+03, .380053E+03),
+      (   0.7,    .256323E+03, .373708E+03),
+      (   1.0,    .214502E+03, .365983E+03),
+      (   3.0,    .981079E+02, .335818E+03),
+      (   5.0,    .613037E+02, .324438E+03),
+      (   7.0,    .443115E+02, .319909E+03),
+      (  10.0,    .312256E+02, .317127E+03),
+      (  30.0,    .104614E+02, .314497E+03),
+      (  50.0,    .628052E+01, .314275E+03),
+      (  70.0,    .448608E+01, .314214E+03),
+      ( 100.0,    .314178E+01, .314181E+03),
+      ( 300.0,    .104713E+01, .314153E+03),
+      ( 500.0,    .628281E+00, .314151E+03),
+      ( 700.0,    .448799E+00, .314151E+03),
+      (1000.0,    .314140E+00, .314150E+03)
+    ).map { case (kl_, x, y) =>
+      kl_ -> Complex(x, y)
+    }
 
     def γ_2x(κ_xx: Double) = Math.sqrt((k_0^2) * ((n_1^2) - (n_2^2)) - (κ_xx^2))
     def γ_3x(κ_xx: Double) = Math.sqrt((k_0^2) * ((n_1^2) - (n_3^2)) - (κ_xx^2))
@@ -78,166 +112,123 @@ object Mobi {
       (Math.atan(licznik_arctg / mianownik_arctg) + n_y * π) / κ_yy
     }
 
-    val d = 1 to 5 map { m =>
 
-      println(s"m = $m")
+    val fig1 = Figure()
+    val p1 = fig1.subplot(0)
 
-//      val start = 225600.0
-//      val end = 225700.0
+    val skok_dx = 225300
+    val skok_dy = 225300
 
-      val start = 0.0
-      val end = 5000000.0
+    val d = 1 to 6 map { m=>
+      println(s"Obliczam d dla m=$m")
 
-      val numSteps = 10000
-      val steps = (0 to numSteps) map (e => e * (end - start) / numSteps + start)
+      val max_κx = domainEnd(d_x(m))
+      val max_κy = domainEnd(d_y(m))
+      val min_k_dx = findMin(d_x(m), 0.0, max_κx)
+      val min_k_dy = findMin(d_y(m), 0.0, max_κy)
+      val min_dx = d_x(m)(min_k_dx)
+      val min_dy = d_y(m)(min_k_dy)
 
-      val funValuesX = steps map (step => step -> d_x(m+1)(step))// map {s => println(s"${s._1} ${s._2} "); s}
-      val funValuesY = steps map (step => step -> d_y(m+1)(step))// map {s => println(s"${s._1} ${s._2} "); s}
+      println(s"max_κx = $max_κx")
+      println(s"max_κy = $max_κy")
+      println(s"min_k_dx = $min_k_dx")
+      println(s"min_k_dy = $min_k_dy")
+      println(s"min_dx = $min_dx")
+      println(s"min_dy = $min_dy")
 
-      println
+      do_plot(p1, d_x(m), 0, max_κx max max_κy)
+      do_plot(p1, d_y(m), 0, max_κx max max_κy)
 
-      val minX = funValuesX.minBy(_._2)
-      val minY = funValuesY.minBy(_._2)
-      println(s"graniczna κ: ${minX._1}\t\td_x = ${minX._2}")
-      println(s"graniczna κ: ${minY._1}\t\td_y = ${minY._2}")
-
-      minX._2 -> minY._2
+      min_dx -> min_dy
     }
 
-    val t = 1 to 6 map { n =>
+    val κd = 1 to 5 map { m =>
+      println(s"Obliczam κ i β dla m=$m")
 
-      println(s"n = $n")
+      val (nastepny_poziom_dx, nastepny_poziom_dy) = d(m)
+      val nastepny_poziom = nastepny_poziom_dx min nastepny_poziom_dy
 
-//      val start = 4000000.0
-//      val end = 5000000.0
-      val start = 0.0
-      val end = 5000000.0
+      val min_κx = findMin((κ: Double) => Math.abs(d_x(m)(κ) - nastepny_poziom), 1e-5, skok_dx)
+      val min_κy = findMin((κ: Double) => Math.abs(d_y(m)(κ) - nastepny_poziom), 1e-5, skok_dy)
 
-      val numSteps = 10000
-      val steps = (0 to numSteps) map (e => e * (end - start) / numSteps + start)
+      println(s"min_κx = $min_κx")
+      println(s"min_κy = $min_κy")
 
-      val funValuesX = steps map (step => step -> t_x(n+1)(step))// map {s => println(s"${s._1} ${s._2} "); s}
-      val funValuesY = steps map (step => step -> t_y(n+1)(step))// map {s => println(s"${s._1} ${s._2} "); s}
+      min_κx -> min_κy
+    }
 
-      println
+    fig1.saveas("plot1.png")
 
-      val minX = funValuesX.minBy(_._2)
-      val minY = funValuesY.minBy(_._2)
-      println(s"graniczna κ: ${minX._1}\t\tt_x = ${minX._2}")
-      println(s"graniczna κ: ${minY._1}\t\tt_y = ${minY._2}")
+    println
+    println
 
-      minX._2 -> minY._2
+    val fig2 = Figure()
+    val p2 = fig2.subplot(0)
+
+    val skok_tx = 3340000
+    val skok_ty = 4340000
+
+    val t = 1 to 6 map { n=>
+      println(s"Obliczam t dla n=$n")
+
+      val max_κx = domainEnd(t_x(n), 10)
+      val max_κy = domainEnd(t_y(n), 10)
+      val min_k_tx = findMin(t_x(n), 0.0, max_κx)
+      val min_k_ty = findMin(t_y(n), 0.0, max_κy)
+      val min_tx = t_x(n)(min_k_tx)
+      val min_ty = t_y(n)(min_k_ty)
+
+      println(s"max_κx = $max_κx")
+      println(s"max_κy = $max_κy")
+      println(s"min_k_tx = $min_k_tx")
+      println(s"min_k_ty = $min_k_ty")
+      println(s"min_tx = $min_tx")
+      println(s"min_ty = $min_ty")
+
+      do_plot(p2, t_x(n), 0, max_κx max max_κy)
+      do_plot(p2, t_y(n), 0, max_κx max max_κy)
+
+      min_tx -> min_ty
+    }
+
+    fig2.saveas("plot2.png")
+
+    val κt = 1 to 5 map { n =>
+      println(s"Obliczam κ i β dla n=$n")
+
+      val (nastepny_poziom_tx, nastepny_poziom_ty) = t(n)
+      val nastepny_poziom = nastepny_poziom_tx min nastepny_poziom_ty
+
+      val min_κx = findMin((κ: Double) => Math.abs(t_x(n)(κ) - nastepny_poziom), 1e-5, skok_tx)
+      val min_κy = findMin((κ: Double) => Math.abs(t_y(n)(κ) - nastepny_poziom), 1e-5, skok_ty)
+
+      println(s"min_κx = $min_κx")
+      println(s"min_κy = $min_κy")
+
+      min_κx -> min_κy
+    }
+
+    // bety
+    val βl = 0 to 4 map { n =>
+      val βx = Math.sqrt((n_1 ^ 2) * (k_0 ^ 2) - (κd(n)._1 ^ 2) - (κt(n)._1 ^ 2))
+      val βy = Math.sqrt((n_1 ^ 2) * (k_0 ^ 2) - (κd(n)._2 ^ 2) - (κt(n)._2 ^ 2))
+
+      println(s"n=${n+1}")
+      println(s"βx=$βx")
+      println(s"βy=$βy")
+      βx -> βy
     }
 
     def κ_xx(m: Int, n: Int) = {
-      val dx = 20.89e-6//d(m-1)._1 // 1-based
-
-      //        val start = 0.0
-      //        val end = 250000.0
-
-      val start = 0.0
-      val end = 5000000.0
-
-      val numSteps = 1000000
-      val steps = (0 to numSteps) map (e => e * (end - start) / numSteps + start)
-
-      val funValuesX = steps map (step => step -> Math.abs(d_x(1)(step) - dx))
-      val minX = funValuesX.minBy(_._2)
-
-      println(s"κ_xx dla m=$m: ${minX._1}")
-
-      minX._1
+      κd(n)._1
     }
-
     def κ_xy(m: Int, n: Int) = {
-      val tx = 1.08e-6//t(n-1)._1 // 1-based
-
-      //        val start = 0.0
-      //        val end = 5000000.0
-
-      val start = 0.0
-      val end = 5000000.0
-
-      val numSteps = 1000000
-      val steps = (0 to numSteps) map (e => e * (end - start) / numSteps + start)
-
-      val funValuesY = steps map (step => step -> Math.abs(t_x(1)(step) - tx))
-      val minY = funValuesY.minBy(_._2)
-
-      println(s"κ_xy dla n=$n: ${minY._1}")
-
-      minY._1
+      κt(n)._1
     }
 
     def βx(m: Int, n: Int) = {
-
-      val β = Math.sqrt((n_1^2)*(k_0^2) - (κ_xx(m,n) ^ 2) - (κ_xy(m,n) ^ 2))
-      println(s"βx($m, $n) = $β")
-      β
+      βl(m-1)._1
     }
-
-    def κ_yx(m: Int, n: Int) = {
-      val dy = d(m-1)._2 // 1-based
-//      val dy = 20.89e-6//d(m-1)._2 // 1-based
-
-      val start = 0.0
-      val end = 5000000.0
-
-      val numSteps = 1000000
-      val steps = (0 to numSteps) map (e => e * (end - start) / numSteps + start)
-
-      val funValuesX = steps map (step => step -> Math.abs(d_y(1)(step) - dy))
-      val minX = funValuesX.minBy(_._2)
-
-      println(s"κ_yx dla m=$m: ${minX._1}")
-
-      minX._1
-    }
-
-    def κ_yy(m: Int, n: Int) = {
-      val ty = t(n-1)._2 // 1-based
-//      val ty = 1.08e-6//t(n-1)._2 // 1-based
-
-      val start = 0.0
-      val end = 5000000.0
-
-      val numSteps = 1000000
-      val steps = (0 to numSteps) map (e => e * (end - start) / numSteps + start)
-
-      val funValuesY = steps map (step => step -> Math.abs(t_y(1)(step) - ty))
-      val minY = funValuesY.minBy(_._2)
-
-      println(s"κ_yy dla n=$n: ${minY._1}")
-
-      minY._1
-    }
-
-    def βy(m: Int, n: Int) = {
-
-      val β = Math.sqrt((n_1^2)*(k_0^2) - (κ_yx(m,n) ^ 2) - (κ_yy(m,n) ^ 2))
-      println(s"βy($m, $n) = $β")
-      β
-    }
-
-    βx(1,1)
-    βx(1,2)
-    βx(1,3)
-    βx(1,4)
-    βx(1,5)
-    βx(2,1)
-    βx(3,1)
-    βx(4,1)
-    βx(5,1)
-
-    βy(1,1)
-    βy(1,2)
-    βy(1,3)
-    βy(1,4)
-    βy(1,5)
-    βy(2,1)
-    βy(3,1)
-    βy(4,1)
-    βy(5,1)
 
     def ξ_x(m: Int, n: Int) =
       (Math.atan(((-n_3^2) * κ_xx(m,n)) / ((n_1^2) * γ_3x(κ_xx(m,n)))) + m*π ) / κ_xx(m,n)
@@ -294,11 +285,79 @@ object Mobi {
       Emn
     }
 
-    val lewa_calka = NumericalIntegration.integrate2(Ex(1,1), -1*d(1)._2, 1*d(1)._2, -1*t(1)._2, 1*t(1)._2)
-    println("wartosc calki:")
-    println(lewa_calka)
+    val ex11T: ((Double, Double)) => Double = (Ex(1, 1)).tupled
+    val Ex11: Cache[(Double, Double), Double] = Cache((x: (Double, Double)) => ex11T(x))
+
+//    val marginesy = Seq(1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1, 2, 5, 10)
+
+    val margines = 2.0
+
+    val lewa_calka = NumericalIntegration.integrate2({ (x, y) => abs(Ex11((x, y))) ^ 2 }, -margines * d(1)._2, (1+margines) * d(1)._2, -margines * t(1)._2, (1+margines) * t(1)._2)
+
+    α_L_arr.foreach { α_L =>
+      val fig_g = Figure()
+      val p_g = fig_g.subplot(0)
+      p_g.title = s"α_L = $α_L"
+
+      println(s"α_L = ${α_L}")
+      pout_przez_ps_arr.foreach { pout_przez_ps =>
+        println(s"pout_przez_ps = $pout_przez_ps")
+
+        println("klq\tγq\tg0")
+        val res: Seq[(Double, Double)] = input.map { case (klq: Double, γq: Complex) =>
+
+          val C = 2 * (abs(sinh(γq * L))^2)
+
+          def frq(z: Double) = sinh(γq * (z + L / 2))
+          def fsq(z: Double) = sinh(γq * (z - L / 2))
+
+          val suma_kw_f = Cache((z: Double) => (abs(frq(z)) ^ 2) + (abs(fsq(z)) ^ 2))
+
+          val licznik_g0 = C + 2 * α_L * integrate((z: Double) => (abs(frq(z)) ^ 2) + (abs(fsq(z)) ^ 2), -L/2, L/2)
+          val lewy_ulamek_mianownika = 2.0 / lewa_calka
+
+          def fkcja_pod_potrojna_calka(x: Double, y: Double, z: Double) = {
+            val E_x = Ex11((x, y))
+
+            val licz = suma_kw_f(z) * (abs(E_x) ^ 2)
+            val mian = 1 + pout_przez_ps*((suma_kw_f(z) * (abs(E_x)^2)) / C)
+
+            licz / mian
+          }
+
+          val potr_calka = integrate3(fkcja_pod_potrojna_calka, -L/2, L/2, -margines*d(1)._2, (1+margines)*d(1)._2, -margines*t(1)._2, (1+margines)*t(1)._2)
+
+          val g0 = licznik_g0 / (lewy_ulamek_mianownika * potr_calka)
+
+          println(s"$klq\t$γq\t$g0")
+
+          klq -> g0
+        }
+
+        p_g += breeze.plot.plot(
+          res.map(_._1) map Math.log10,
+          res.map(_._2) map Math.log10)
+        println
+        println
+      }
+      fig_g.saveas("plot3.png")
+    }
+  }
+
+
+  def do_plot(p: Plot, f: Double=>Double, a: Double, b: Double, title: String = "Wykres") = {
+    import breeze.plot._
+
+    val x = a to b by ((b - a) / 10000) drop 1
+    val y = x.map(f) map (Math.log10)
+    p += plot(x, y, '-')
+    p.title = title
+    p.xlabel = "x axis"
+    p.ylabel = "y axis"
 
   }
+
+  override def toString = s"Mobi()"
 }
 
 object NumericalIntegration {
@@ -309,14 +368,67 @@ object NumericalIntegration {
   def simpson(f:Double=>Double, a:Double, b:Double)=(f(a)+4*f((a+b)/2)+f(b))/6
 
   type Method = (Double=>Double, Double, Double) => Double
-  def integrate(f:Double=>Double, a:Double, b:Double, steps:Int = 2000, m: Method = simpson _)={
+  def integrate(f:Double=>Double, a:Double, b:Double, steps:Int = 20000, m: Method = midRect _)={
     val delta:Double=(b-a)/steps
-    delta*(a to b by delta).foldLeft(0.0)((s,x) => s+m(f, x, x+delta))
+    val xs = a until b by delta
+
+    val ranges = 1
+    val xs_split = xs.grouped(steps/ranges).toSeq
+
+    val subsums = xs_split.seq.map { xss =>
+      xss.foldLeft(0.0)((s, x) => s+m(f, x, x+delta))
+    }
+
+    delta * subsums.foldLeft(0.0)((s, x) => s + x)
   }
 
+  // przy 400 jest	1.1766891643319607E27
+  // przy 600 jest  2.2285952639501582E24
+  // przy 800 jest  1.02249518994718E23
+
   def integrate2(f:(Double, Double)=>Double, a1:Double, b1:Double, a2:Double, b2:Double,
-                 steps: Int = 1000, m: Method = midRect _) = {
+                 steps: Int = 3000, m: Method = midRect _) = {
     def inner(v: Double) = integrate(f.curried(v), a2, b2, steps, m)
     integrate(inner, a1, b1, steps, m)
+  }
+
+  def integrate3(f:(Double, Double, Double)=>Double, a1:Double, b1:Double, a2:Double, b2:Double, a3: Double, b3: Double,
+                 steps: Int = 1000, m: Method = midRect _) = {
+    def inner(v: Double) = integrate2({case(vv, vvv)=>f(v,vv,vvv)}, a2, b2, a3, b3, steps/3, m)
+    integrate(inner, a1, b1, steps, m)
+  }
+}
+
+object MathHelpers {
+  def exp(z: Complex) = Complex(Math.cos(z.imag), Math.sin(z.imag)) * Math.exp(z.real)
+  def sinh(z: Complex): Complex = (exp(z) - exp(-z)) / 2
+  def exp(x: Double) = Math exp x
+
+  def findMin(f: (Double => Double), a: Double, b: Double, baseSteps: Int = 50000, accuracy: Double = 1e-10): Double = {
+    val diff = (b - a) / baseSteps
+    val steps = a to b by diff
+    val min = steps.filterNot(e => f(e).isNaN).minBy(f)
+    if (diff < accuracy)
+      min
+    else
+      findMin(f, (min-diff) max a, (min+diff) min b, baseSteps, accuracy)
+  }
+
+  def domainEnd(f: (Double => Double), initialStep: Int = 1) = {
+    val firstNan = Stream.from(0, step = initialStep).map(_.toDouble).find(e=>f(e).isNaN).get
+    firstNan - initialStep
+  }
+
+  case class Cache[K, V](f: K => V){
+    val cache: scala.collection.mutable.Map[K, V] = scala.collection.mutable.Map.empty[K, V]
+
+    def get(k: K): V =
+      cache.getOrElse(k, {
+        val newValue = f(k)
+        cache += (k -> newValue)
+        newValue
+      })
+
+    def apply(k: K): V = get(k)
   }
 }
